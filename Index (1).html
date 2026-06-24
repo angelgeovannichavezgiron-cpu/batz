@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Tools</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+    textarea { resize: vertical; }
+    .fade-in { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    #csvTableWrap { max-height: 65vh; overflow: auto; }
+    #csvTable thead th { position: sticky; top: 0; z-index: 10; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50">
+
+  <!-- ── Tab bar ───────────────────────────────────────────────────────────── -->
+  <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+    <div class="max-w-5xl mx-auto px-4 flex gap-0 pt-2">
+      <button id="tabBtn-unique" onclick="switchTab('unique')"
+        class="px-6 py-2.5 text-sm font-semibold rounded-t-lg border border-b-0 border-indigo-300 text-indigo-600 bg-white -mb-px z-10 transition-colors">
+        🔢 Unique Values
+      </button>
+      <button id="tabBtn-viewer" onclick="switchTab('viewer')"
+        class="px-6 py-2.5 text-sm font-semibold rounded-t-lg border border-b-0 border-transparent text-gray-500 bg-transparent hover:text-gray-700 transition-colors">
+        📊 CSV Viewer
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       TAB 1 — Unique Values
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div id="tab-unique" class="max-w-3xl mx-auto py-10 px-4">
+
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-12 h-12 bg-indigo-600 rounded-xl mb-3">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-gray-900">Unique Values Extractor</h1>
+      <p class="text-gray-500 text-sm mt-1">Like <code class="bg-gray-100 px-1 rounded">UNIQUE()</code> in Google Sheets — paste data, get unique values instantly</p>
+    </div>
+
+    <!-- Input Card -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-4">
+
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm font-semibold text-gray-700">Paste your data</label>
+        <span id="inputCount" class="text-xs text-gray-400"></span>
+      </div>
+
+      <textarea id="inputArea"
+        placeholder="Paste a column from Excel or Google Sheets here (one value per line)…"
+        class="w-full h-44 border border-gray-200 rounded-xl p-3 text-sm font-mono focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none transition"
+        oninput="onInputChange()"
+        onkeydown="if(event.ctrlKey && event.key==='Enter') extract()"
+      ></textarea>
+
+      <!-- Column picker -->
+      <div id="colPickerWrap" class="hidden mt-3 flex items-center gap-2 text-sm">
+        <span class="text-gray-600 font-medium">Multiple columns detected — use column:</span>
+        <select id="colPicker" class="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-400 outline-none"></select>
+      </div>
+
+      <!-- Options -->
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3">
+        <div class="flex items-center gap-2 text-sm">
+          <span class="text-gray-600 font-medium">Sort:</span>
+          <select id="sortOption" class="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-400 outline-none">
+            <option value="none">Original order</option>
+            <option value="asc">A → Z</option>
+            <option value="desc">Z → A</option>
+            <option value="num_asc">Numeric ↑ (smallest first)</option>
+            <option value="num_desc">Numeric ↓ (largest first)</option>
+          </select>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-gray-600 font-medium cursor-pointer select-none">
+          <input type="checkbox" id="removeBlanks" checked class="w-4 h-4 accent-indigo-600 rounded cursor-pointer">
+          Remove blank rows
+        </label>
+      </div>
+
+      <button onclick="extract()"
+        class="mt-4 w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold rounded-xl transition-colors shadow-sm text-sm">
+        Extract Unique Values &nbsp;<span class="opacity-70 font-normal">(or Ctrl + Enter)</span>
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div id="resultsSection" class="hidden fade-in">
+
+      <!-- Stats row -->
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
+          <div id="totalCount" class="text-3xl font-extrabold text-gray-700">—</div>
+          <div class="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Total rows</div>
+        </div>
+        <div class="bg-indigo-50 rounded-xl border border-indigo-200 shadow-sm p-4 text-center">
+          <div id="uniqueCount" class="text-3xl font-extrabold text-indigo-700">—</div>
+          <div class="text-xs text-indigo-600 mt-1 font-medium uppercase tracking-wide">Unique values</div>
+        </div>
+        <div class="bg-orange-50 rounded-xl border border-orange-200 shadow-sm p-4 text-center">
+          <div id="dupCount" class="text-3xl font-extrabold text-orange-600">—</div>
+          <div class="text-xs text-orange-500 mt-1 font-medium uppercase tracking-wide">Duplicates removed</div>
+        </div>
+      </div>
+
+      <!-- Output -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-gray-700">Result — unique values</h2>
+          <div class="flex gap-2">
+            <button onclick="copyResult()" id="copyBtn"
+              class="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+              Copy to Clipboard
+            </button>
+            <button onclick="downloadResult()"
+              class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-xs font-semibold rounded-lg transition-colors">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              Download .txt
+            </button>
+            <button onclick="clearAll()"
+              class="px-3 py-1.5 border border-gray-300 text-gray-600 hover:bg-gray-50 text-xs font-semibold rounded-lg transition-colors">
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <!-- x prefix toggle -->
+        <div class="flex items-center gap-3 mb-3 p-3 bg-violet-50 border border-violet-200 rounded-xl">
+          <div class="flex-1">
+            <p class="text-xs font-semibold text-violet-800">Add "x" prefix to all values</p>
+            <p class="text-xs text-violet-500 mt-0.5">e.g. <span class="font-mono">387970</span> → <span class="font-mono font-bold">x387970</span></p>
+          </div>
+          <button onclick="toggleXPrefix()" id="xPrefixBtn"
+            class="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap">
+            <span id="xPrefixBtnIcon" class="text-base leading-none">+</span>
+            <span id="xPrefixBtnLabel">Add x prefix</span>
+          </button>
+        </div>
+
+        <textarea id="outputArea" readonly
+          class="w-full h-56 border border-gray-200 rounded-xl p-3 text-sm font-mono bg-slate-50 focus:outline-none"
+        ></textarea>
+        <p class="text-xs text-gray-400 mt-2">Ready to paste directly into Google Sheets or Excel — one value per row.</p>
+      </div>
+    </div>
+
+  </div><!-- /tab-unique -->
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       TAB 2 — CSV Viewer
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div id="tab-viewer" class="hidden py-8 px-4">
+
+    <!-- Header -->
+    <div class="text-center mb-6">
+      <div class="inline-flex items-center justify-center w-12 h-12 bg-emerald-600 rounded-xl mb-3">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M3 10h18M3 14h18M10 3v18M14 3v18"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-gray-900">CSV Viewer</h1>
+      <p class="text-gray-500 text-sm mt-1">
+        Abre tu CSV directamente aquí — sin necesidad de Drive ni Google Sheets
+      </p>
+    </div>
+
+    <!-- Upload zone -->
+    <div id="dropZone"
+      class="max-w-2xl mx-auto mb-5 border-2 border-dashed border-gray-300 rounded-2xl p-10 text-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
+      onclick="document.getElementById('csvFileInput').click()"
+      ondragover="event.preventDefault(); this.classList.add('border-emerald-400','bg-emerald-50')"
+      ondragleave="this.classList.remove('border-emerald-400','bg-emerald-50')"
+      ondrop="handleDrop(event)">
+      <input type="file" id="csvFileInput" accept=".csv,.tsv,.txt" class="hidden" onchange="handleFileInput(event)">
+      <svg class="w-10 h-10 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+      </svg>
+      <p class="text-gray-700 font-semibold">Drag &amp; drop a CSV file here</p>
+      <p class="text-gray-400 text-sm mt-1">or click to browse &nbsp;·&nbsp; .csv, .tsv, .txt</p>
+    </div>
+
+    <!-- Controls bar (hidden until file is loaded) -->
+    <div id="viewerControls" class="hidden max-w-full mb-3 flex flex-wrap items-center gap-3">
+      <span class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm font-semibold text-gray-600 whitespace-nowrap">
+        📋 <span id="vRowCount">0</span> rows
+      </span>
+      <span class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm font-semibold text-gray-600 whitespace-nowrap">
+        📊 <span id="vColCount">0</span> columns
+      </span>
+      <div class="flex-1 min-w-[180px]">
+        <input id="viewerSearch" type="text" placeholder="🔍 Filter rows…"
+          class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none"
+          oninput="filterRows()">
+      </div>
+      <button id="copySelBtn" onclick="copySelectedRows()"
+        class="hidden px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors whitespace-nowrap">
+      </button>
+      <button onclick="clearViewer()"
+        class="px-3 py-1.5 border border-gray-300 text-gray-500 hover:bg-gray-50 text-sm rounded-lg transition-colors whitespace-nowrap">
+        Clear
+      </button>
+    </div>
+
+    <!-- Hint bar -->
+    <p id="viewerHint" class="hidden text-xs text-gray-400 mb-2 max-w-full">
+      Click column header to sort &nbsp;·&nbsp;
+      <svg class="w-3 h-3 inline text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+      copy icon on header to copy the whole column &nbsp;·&nbsp;
+      Click rows to select (Ctrl/Shift for multiple) &nbsp;·&nbsp;
+      Copying a column only includes visible (filtered) rows
+    </p>
+
+    <!-- Table -->
+    <div id="csvTableWrap" class="hidden bg-white rounded-2xl border border-gray-100 shadow-sm">
+      <table id="csvTable" class="w-full border-collapse text-sm">
+        <thead id="csvThead"></thead>
+        <tbody id="csvTbody"></tbody>
+      </table>
+    </div>
+
+  </div><!-- /tab-viewer -->
+
+  <!-- Toast -->
+  <div id="viewerToast"
+    class="hidden fixed bottom-6 right-6 z-50 bg-gray-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg fade-in">
+  </div>
+
+
+  <script>
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  TAB SWITCHING
+  // ══════════════════════════════════════════════════════════════════════════════
+  function switchTab(name) {
+    ['unique', 'viewer'].forEach(t => {
+      document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
+      const btn = document.getElementById('tabBtn-' + t);
+      if (t === name) {
+        const accent = t === 'unique' ? 'border-indigo-300 text-indigo-600' : 'border-emerald-300 text-emerald-700';
+        btn.className = `px-6 py-2.5 text-sm font-semibold rounded-t-lg border border-b-0 ${accent} bg-white -mb-px z-10 transition-colors`;
+      } else {
+        btn.className = 'px-6 py-2.5 text-sm font-semibold rounded-t-lg border border-b-0 border-transparent text-gray-500 bg-transparent hover:text-gray-700 transition-colors';
+      }
+    });
+  }
+
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  TAB 1 — UNIQUE VALUES
+  // ══════════════════════════════════════════════════════════════════════════════
+  let xPrefixActive = false;
+
+  function toggleXPrefix() {
+    const out = document.getElementById('outputArea');
+    if (!out.value.trim()) return;
+    const lines = out.value.split('\n');
+    const btn   = document.getElementById('xPrefixBtn');
+    const icon  = document.getElementById('xPrefixBtnIcon');
+    const label = document.getElementById('xPrefixBtnLabel');
+    if (!xPrefixActive) {
+      out.value = lines.map(l => l ? 'x' + l : l).join('\n');
+      xPrefixActive = true;
+      btn.classList.replace('bg-violet-600', 'bg-red-500');
+      btn.classList.replace('hover:bg-violet-700', 'hover:bg-red-600');
+      icon.textContent  = '−';
+      label.textContent = 'Remove x prefix';
+    } else {
+      out.value = lines.map(l => l.startsWith('x') ? l.slice(1) : l).join('\n');
+      xPrefixActive = false;
+      btn.classList.replace('bg-red-500', 'bg-violet-600');
+      btn.classList.replace('hover:bg-red-600', 'hover:bg-violet-700');
+      icon.textContent  = '+';
+      label.textContent = 'Add x prefix';
+    }
+  }
+
+  function resetXPrefixBtn() {
+    xPrefixActive = false;
+    const btn   = document.getElementById('xPrefixBtn');
+    const icon  = document.getElementById('xPrefixBtnIcon');
+    const label = document.getElementById('xPrefixBtnLabel');
+    if (!btn) return;
+    btn.className = btn.className
+      .replace('bg-red-500', 'bg-violet-600')
+      .replace('hover:bg-red-600', 'hover:bg-violet-700');
+    icon.textContent  = '+';
+    label.textContent = 'Add x prefix';
+  }
+
+  function detectSeparatorUnique(text) {
+    const sample = text.split('\n').slice(0, 10).join('\n');
+    const tabs   = (sample.match(/\t/g) || []).length;
+    const commas = (sample.match(/,/g)  || []).length;
+    if (tabs > 3)   return '\t';
+    if (commas > 3) return ',';
+    return null;
+  }
+
+  function onInputChange() {
+    const raw   = document.getElementById('inputArea').value;
+    const lines = raw.split('\n').filter(l => l.trim());
+    document.getElementById('inputCount').textContent = lines.length
+      ? lines.length.toLocaleString() + ' rows pasted' : '';
+
+    const sep  = detectSeparatorUnique(raw);
+    const wrap = document.getElementById('colPickerWrap');
+    const picker = document.getElementById('colPicker');
+
+    if (!sep) { wrap.classList.add('hidden'); return; }
+    const cols = raw.split('\n')[0].split(sep);
+    if (cols.length < 2) { wrap.classList.add('hidden'); return; }
+
+    picker.innerHTML = '';
+    cols.forEach((h, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `Column ${i + 1}${h.trim() ? ' — ' + h.trim() : ''}`;
+      picker.appendChild(opt);
+    });
+    wrap.classList.remove('hidden');
+  }
+
+  function extract() {
+    const raw = document.getElementById('inputArea').value;
+    if (!raw.trim()) { alert('Please paste some data first.'); return; }
+
+    const removeBlanks = document.getElementById('removeBlanks').checked;
+    const sortOpt      = document.getElementById('sortOption').value;
+    const sep          = detectSeparatorUnique(raw);
+    const colIdx       = sep ? parseInt(document.getElementById('colPicker').value || '0') : 0;
+
+    let values = raw.split('\n').map(line => {
+      const v = sep ? (line.split(sep)[colIdx] || '') : line;
+      return v.trim();
+    });
+
+    if (removeBlanks) values = values.filter(v => v !== '');
+    const total = values.length;
+
+    const seen = new Set();
+    const unique = [];
+    for (const v of values) {
+      if (!seen.has(v)) { seen.add(v); unique.push(v); }
+    }
+
+    if (sortOpt === 'asc')
+      unique.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    else if (sortOpt === 'desc')
+      unique.sort((a, b) => b.localeCompare(a, undefined, { sensitivity: 'base' }));
+    else if (sortOpt === 'num_asc')
+      unique.sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+    else if (sortOpt === 'num_desc')
+      unique.sort((a, b) => (parseFloat(b) || 0) - (parseFloat(a) || 0));
+
+    document.getElementById('totalCount').textContent  = total.toLocaleString();
+    document.getElementById('uniqueCount').textContent = unique.length.toLocaleString();
+    document.getElementById('dupCount').textContent    = (total - unique.length).toLocaleString();
+    document.getElementById('outputArea').value        = unique.join('\n');
+    resetXPrefixBtn();
+
+    const sec = document.getElementById('resultsSection');
+    sec.classList.remove('hidden');
+    sec.classList.add('fade-in');
+    sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function copyResult() {
+    const text = document.getElementById('outputArea').value;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.getElementById('outputArea');
+      ta.select();
+      document.execCommand('copy');
+    }
+    const btn  = document.getElementById('copyBtn');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ Copied!';
+    btn.classList.replace('bg-green-600', 'bg-green-800');
+    setTimeout(() => {
+      btn.innerHTML = orig;
+      btn.classList.replace('bg-green-800', 'bg-green-600');
+    }, 1800);
+  }
+
+  function downloadResult() {
+    const content = document.getElementById('outputArea').value;
+    if (!content) return;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'unique_values.txt'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function clearAll() {
+    document.getElementById('inputArea').value  = '';
+    document.getElementById('outputArea').value = '';
+    document.getElementById('inputCount').textContent = '';
+    document.getElementById('resultsSection').classList.add('hidden');
+    document.getElementById('colPickerWrap').classList.add('hidden');
+    resetXPrefixBtn();
+    document.getElementById('inputArea').focus();
+  }
+
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  TAB 2 — CSV VIEWER
+  // ══════════════════════════════════════════════════════════════════════════════
+  let vHeaders  = [];
+  let vAllRows  = [];   // all parsed rows
+  let vFiltered = [];   // after search filter
+  let vSelected = new Set(); // row indices into vFiltered that are selected
+  let vLastSel  = -1;
+  let vSortCol  = -1;
+  let vSortDir  =  1;   // 1 = asc, -1 = desc
+
+  // ── File loading ─────────────────────────────────────────────────────────────
+  function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.remove('border-emerald-400', 'bg-emerald-50');
+    const file = e.dataTransfer.files[0];
+    if (file) readFile(file);
+  }
+
+  function handleFileInput(e) {
+    const file = e.target.files[0];
+    if (file) readFile(file);
+  }
+
+  function readFile(file) {
+    const reader = new FileReader();
+    reader.onload = ev => parseAndRender(ev.target.result);
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  // ── CSV parsing ──────────────────────────────────────────────────────────────
+  function detectCsvSep(line) {
+    const t = (line.match(/\t/g)  || []).length;
+    const c = (line.match(/,/g)   || []).length;
+    const s = (line.match(/;/g)   || []).length;
+    if (t >= c && t >= s) return '\t';
+    if (s > c) return ';';
+    return ',';
+  }
+
+  function parseCsvLine(line, sep) {
+    const fields = [];
+    let field = '', inQ = false;
+    for (let i = 0; i <= line.length; i++) {
+      const ch = i < line.length ? line[i] : sep; // flush at end
+      if (ch === '"' && !inQ)                       { inQ = true;  continue; }
+      if (ch === '"' &&  inQ && line[i+1] === '"')  { field += '"'; i++; continue; }
+      if (ch === '"' &&  inQ)                        { inQ = false; continue; }
+      if (ch === sep && !inQ)                        { fields.push(field.trim()); field = ''; continue; }
+      field += ch;
+    }
+    return fields;
+  }
+
+  function parseAndRender(text) {
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+    if (lines.length < 2) { alert('El CSV necesita al menos 2 filas (encabezado + datos).'); return; }
+
+    const sep   = detectCsvSep(lines[0]);
+    vHeaders    = parseCsvLine(lines[0], sep);
+    vAllRows    = lines.slice(1).map(l => parseCsvLine(l, sep));
+    vFiltered   = [...vAllRows];
+    vSelected.clear();
+    vSortCol  = -1;
+    vSortDir  =  1;
+    vLastSel  = -1;
+    document.getElementById('viewerSearch').value = '';
+    renderTable();
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  function renderTable() {
+    document.getElementById('vRowCount').textContent = vFiltered.length.toLocaleString();
+    document.getElementById('vColCount').textContent = vHeaders.length;
+    document.getElementById('viewerControls').classList.remove('hidden');
+    document.getElementById('viewerHint').classList.remove('hidden');
+    document.getElementById('csvTableWrap').classList.remove('hidden');
+
+    // ── Header row ──
+    document.getElementById('csvThead').innerHTML =
+      '<tr class="bg-slate-50">' +
+      vHeaders.map((h, ci) => `
+        <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200 whitespace-nowrap cursor-pointer select-none group min-w-[80px]"
+            onclick="sortCol(${ci})">
+          <div class="flex items-center gap-1.5">
+            <span class="truncate max-w-[180px]" title="${esc(h)}">${esc(h)}</span>
+            <span class="text-gray-400 text-[10px] flex-shrink-0">${vSortCol === ci ? (vSortDir === 1 ? '↑' : '↓') : ''}</span>
+            <button class="opacity-0 group-hover:opacity-100 ml-auto flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-emerald-100 transition-all"
+                    onclick="event.stopPropagation(); copyCol(${ci})"
+                    title="Copiar columna completa">
+              <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </button>
+          </div>
+        </th>
+      `).join('') + '</tr>';
+
+    // ── Body rows ──
+    const MAX = 5000;
+    const rows = vFiltered.slice(0, MAX);
+    document.getElementById('csvTbody').innerHTML =
+      rows.map((row, ri) => {
+        const sel = vSelected.has(ri);
+        return `<tr class="cursor-pointer transition-colors border-l-2 ${sel ? 'bg-indigo-50 border-indigo-400' : 'hover:bg-gray-50 border-transparent'}"
+                    onclick="selectRow(${ri}, event)">` +
+          vHeaders.map((_, ci) =>
+            `<td class="px-3 py-1.5 text-sm text-gray-700 border-b border-gray-50 whitespace-nowrap max-w-xs truncate"
+                 title="${esc(row[ci] || '')}">${esc(row[ci] || '')}</td>`
+          ).join('') +
+          '</tr>';
+      }).join('') +
+      (vFiltered.length > MAX
+        ? `<tr><td colspan="${vHeaders.length}" class="px-3 py-3 text-center text-sm text-amber-700 bg-amber-50 font-medium">
+            Mostrando los primeros ${MAX.toLocaleString()} de ${vFiltered.length.toLocaleString()} rows — usa el filtro para reducir.
+           </td></tr>`
+        : '');
+
+    refreshCopySelBtn();
+  }
+
+  // ── Sort ─────────────────────────────────────────────────────────────────────
+  function sortCol(ci) {
+    if (vSortCol === ci) vSortDir *= -1;
+    else { vSortCol = ci; vSortDir = 1; }
+    vFiltered.sort((a, b) => {
+      const av = a[ci] || '', bv = b[ci] || '';
+      const an = parseFloat(av), bn = parseFloat(bv);
+      if (!isNaN(an) && !isNaN(bn)) return (an - bn) * vSortDir;
+      return av.localeCompare(bv, undefined, { sensitivity: 'base' }) * vSortDir;
+    });
+    vSelected.clear();
+    renderTable();
+  }
+
+  // ── Filter ───────────────────────────────────────────────────────────────────
+  function filterRows() {
+    const q = document.getElementById('viewerSearch').value.toLowerCase().trim();
+    vFiltered = q
+      ? vAllRows.filter(row => row.some(c => (c || '').toLowerCase().includes(q)))
+      : [...vAllRows];
+    vSelected.clear();
+    vSortCol = -1;
+    renderTable();
+  }
+
+  // ── Copy column ──────────────────────────────────────────────────────────────
+  function copyCol(ci) {
+    const vals = vFiltered.map(row => row[ci] || '').join('\n');
+    const doIt = () => showToast(`"${vHeaders[ci]}" copiada — ${vFiltered.length} valores`);
+    navigator.clipboard.writeText(vals).then(doIt).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = vals; ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta); doIt();
+    });
+  }
+
+  // ── Row selection ────────────────────────────────────────────────────────────
+  function selectRow(ri, e) {
+    if (e.ctrlKey || e.metaKey) {
+      if (vSelected.has(ri)) vSelected.delete(ri); else vSelected.add(ri);
+    } else if (e.shiftKey && vLastSel >= 0) {
+      const from = Math.min(vLastSel, ri), to = Math.max(vLastSel, ri);
+      for (let i = from; i <= to; i++) vSelected.add(i);
+    } else {
+      if (vSelected.has(ri) && vSelected.size === 1) vSelected.clear();
+      else { vSelected.clear(); vSelected.add(ri); }
+    }
+    vLastSel = ri;
+    // Update only row classes (fast — no full re-render)
+    document.querySelectorAll('#csvTbody tr').forEach((tr, i) => {
+      const sel = vSelected.has(i);
+      tr.className = `cursor-pointer transition-colors border-l-2 ${sel ? 'bg-indigo-50 border-indigo-400' : 'hover:bg-gray-50 border-transparent'}`;
+    });
+    refreshCopySelBtn();
+  }
+
+  function refreshCopySelBtn() {
+    const btn = document.getElementById('copySelBtn');
+    if (vSelected.size > 0) {
+      btn.classList.remove('hidden');
+      btn.textContent = `Copiar filas seleccionadas (${vSelected.size})`;
+    } else {
+      btn.classList.add('hidden');
+    }
+  }
+
+  // ── Copy selected rows ───────────────────────────────────────────────────────
+  // Copies as tab-separated (header + selected rows) — pastes natively into Google Sheets
+  function copySelectedRows() {
+    if (!vSelected.size) return;
+    const header = vHeaders.join('\t');
+    const rows   = [...vSelected].sort((a, b) => a - b).map(ri => vFiltered[ri].join('\t'));
+    const text   = [header, ...rows].join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(`${vSelected.size} fila${vSelected.size > 1 ? 's' : ''} copiada${vSelected.size > 1 ? 's' : ''} — pega en Google Sheets`);
+    });
+  }
+
+  // ── Clear ────────────────────────────────────────────────────────────────────
+  function clearViewer() {
+    vHeaders = []; vAllRows = []; vFiltered = []; vSelected.clear();
+    document.getElementById('viewerControls').classList.add('hidden');
+    document.getElementById('viewerHint').classList.add('hidden');
+    document.getElementById('csvTableWrap').classList.add('hidden');
+    document.getElementById('csvThead').innerHTML = '';
+    document.getElementById('csvTbody').innerHTML = '';
+    document.getElementById('viewerSearch').value = '';
+    document.getElementById('csvFileInput').value = '';
+  }
+
+  // ── Toast ─────────────────────────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg) {
+    const t = document.getElementById('viewerToast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.add('hidden'), 2800);
+  }
+
+  // ── HTML escape helper ────────────────────────────────────────────────────────
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  </script>
+</body>
+</html>
